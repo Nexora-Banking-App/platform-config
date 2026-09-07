@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nexora-workloads
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Nexora-Banking-App/platform-config.git'
+    targetRevision: HEAD
+    path: platform-manifests/nexora-workloads
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: nexora
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
