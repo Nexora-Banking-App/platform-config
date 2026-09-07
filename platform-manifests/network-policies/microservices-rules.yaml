@@ -1,0 +1,88 @@
+# 1. API Gateway: Allowed to receive traffic from outside, and talk to backend services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-policy
+  namespace: nexora
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    # Allow talking to Auth, Account, and Transaction services
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: ["auth-service", "account-service", "transaction-service"]
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# 2. Transaction Service: The ONLY service allowed to reach Fraud & Database (3306)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: transaction-service-policy
+  namespace: nexora
+spec:
+  podSelector:
+    matchLabels:
+      app: transaction-service
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # ONLY API Gateway can talk to Transaction Service!
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    # Allow talking to Fraud Service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: fraud-service
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Allow talking to Amazon RDS MySQL (Port 3306)
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - protocol: TCP
+          port: 3306
+---
+# 3. Fraud Service: ONLY Transaction Service can call it
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fraud-service-policy
+  namespace: nexora
+spec:
+  podSelector:
+    matchLabels:
+      app: fraud-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: transaction-service
+      ports:
+        - protocol: TCP
+          port: 8000

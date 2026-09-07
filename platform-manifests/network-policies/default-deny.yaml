@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: nexora
+spec:
+  podSelector: {} # Applies to ALL pods in the nexora namespace
+  policyTypes:
+    - Ingress
+    - Egress
+  # Empty ingress/egress = Deny everything by default!
+  egress:
+    # Allow DNS resolution so pods can find CoreDNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
