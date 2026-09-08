@@ -9,6 +9,18 @@ spec:
     repoURL: 'https://prometheus-community.github.io/helm-charts'
     targetRevision: '25.21.0'
     chart: prometheus
+    helm:
+      valuesObject:
+        server:
+          persistentVolume:
+            enabled: false # Runs in-memory; no AWS EBS CSI driver required!
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        alertmanager:
+          persistentVolume:
+            enabled: false
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: monitoring
