@@ -4,5 +4,6 @@ kind: Kustomization
 namespace: nexora
 
 resources:
+  - namespace.yaml
   - default-deny.yaml
   - microservice-rules.yaml
