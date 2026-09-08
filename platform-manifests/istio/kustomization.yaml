@@ -28,5 +28,5 @@ helmCharts:
             memory: 256Mi
 
 # Temporarily commented out while base CRDs install:
-# resources:
-#   - peer-authentication.yaml
+resources:
+  - peer-authentication.yaml
