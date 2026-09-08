@@ -1,8 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# (Removed namespace: istio-system so peer-authentication stays in nexora!)
-
 helmCharts:
   - name: base
     repo: https://istio-release.storage.googleapis.com/charts
@@ -29,5 +27,6 @@ helmCharts:
             cpu: 200m
             memory: 256Mi
 
-resources:
-  - peer-authentication.yaml
+# Temporarily commented out while base CRDs install:
+# resources:
+#   - peer-authentication.yaml
