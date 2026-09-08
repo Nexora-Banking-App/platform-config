@@ -3,6 +3,9 @@ kind: PeerAuthentication
 metadata:
   name: default-strict-mtls
   namespace: nexora
+  annotations:
+    # Wave 2: Applies ONLY after the Istio CRDs in Wave 0/1 are installed!
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   mtls:
-    mode: STRICT 
+    mode: STRICT
