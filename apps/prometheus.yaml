@@ -10,17 +10,23 @@ spec:
     targetRevision: '25.21.0'
     chart: prometheus
     helm:
-      valuesObject:
+      values: |
         server:
           persistentVolume:
-            enabled: false # Runs in-memory; no AWS EBS CSI driver required!
+            enabled: false # Runs in-memory without AWS EBS volume
           resources:
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
         alertmanager:
-          persistentVolume:
-            enabled: false
+          enabled: false # Disabled for staging to save memory and slots
+        pushgateway:
+          enabled: false
+        nodeExporter:
+          enabled: false
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: monitoring
