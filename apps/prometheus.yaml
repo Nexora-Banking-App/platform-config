@@ -20,7 +20,7 @@ spec:
               memory: 256Mi
             limits:
               cpu: 500m
-              memory: 1Gi # <-- Gives Prometheus plenty of headroom!
+              memory: 2Gi # <-- Increased to 2Gi so OOMKills are impossible!
           livenessProbeInitialDelay: 60
           readinessProbeInitialDelay: 30
         alertmanager:

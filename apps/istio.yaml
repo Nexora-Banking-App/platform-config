@@ -11,11 +11,17 @@ spec:
     path: platform-manifests/istio
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: istio-system
+    namespace: nexora
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
-      - SkipDryRunOnMissingResource=true 
+      - SkipDryRunOnMissingResource=true
+  # CRITICAL FIX: Stops the infinite out-of-sync loop on failurePolicy!
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/failurePolicy
+        - /webhooks/1/failurePolicy
