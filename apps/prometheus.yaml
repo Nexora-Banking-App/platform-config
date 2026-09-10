@@ -13,14 +13,13 @@ spec:
       values: |
         server:
           persistentVolume:
-            enabled: false # Runs in-memory without AWS EBS volume
-          extraInitContainers:
-            - name: chown-data
-              image: busybox:latest
-              command: ["chown", "-R", "65534:65534", "/data"]
-              volumeMounts:
-                - name: storage-volume
-                  mountPath: /data            
+            enabled: false
+          # Run as root in staging to avoid emptyDir permission issues
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            runAsGroup: 0
+            fsGroup: 0
           resources:
             requests:
               cpu: 50m
@@ -29,7 +28,7 @@ spec:
               cpu: 200m
               memory: 256Mi
         alertmanager:
-          enabled: false # Disabled for staging to save memory and slots
+          enabled: false
         pushgateway:
           enabled: false
         nodeExporter:
