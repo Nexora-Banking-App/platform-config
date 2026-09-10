@@ -14,19 +14,15 @@ spec:
         server:
           persistentVolume:
             enabled: false
-          # Run as root in staging to avoid emptyDir permission issues
-          securityContext:
-            runAsUser: 0
-            runAsNonRoot: false
-            runAsGroup: 0
-            fsGroup: 0
           resources:
             requests:
-              cpu: 50m
-              memory: 128Mi
-            limits:
-              cpu: 200m
+              cpu: 100m
               memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi # <-- Gives Prometheus plenty of headroom!
+          livenessProbeInitialDelay: 60
+          readinessProbeInitialDelay: 30
         alertmanager:
           enabled: false
         pushgateway:
