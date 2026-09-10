@@ -1,31 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-helmCharts:
-  - name: base
-    repo: https://istio-release.storage.googleapis.com/charts
-    version: 1.22.0
-    releaseName: istio-base
-    namespace: istio-system
-
-  - name: istiod
-    repo: https://istio-release.storage.googleapis.com/charts
-    version: 1.22.0
-    releaseName: istiod
-    namespace: istio-system
-    valuesInline:
-      global:
-        meshID: nexora-mesh
-        multiCluster:
-          clusterName: nexora-staging
-      pilot:
-        resources:
-          requests:
-            cpu: 50m
-            memory: 128Mi
-          limits:
-            cpu: 200m
-            memory: 256Mi
+namespace: nexora
 
 resources:
   - peer-authentication.yaml
