@@ -14,6 +14,13 @@ spec:
         server:
           persistentVolume:
             enabled: false # Runs in-memory without AWS EBS volume
+          extraInitContainers:
+            - name: chown-data
+              image: busybox:latest
+              command: ["chown", "-R", "65534:65534", "/data"]
+              volumeMounts:
+                - name: storage-volume
+                  mountPath: /data            
           resources:
             requests:
               cpu: 50m
