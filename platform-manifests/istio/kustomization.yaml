@@ -27,6 +27,5 @@ helmCharts:
             cpu: 200m
             memory: 256Mi
 
-# Temporarily commented out while base CRDs install:
 resources:
   - peer-authentication.yaml
