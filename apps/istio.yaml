@@ -18,10 +18,13 @@ spec:
       selfHeal: true
     syncOptions:
       - SkipDryRunOnMissingResource=true
-  # CRITICAL FIX: Stops the infinite out-of-sync loop on failurePolicy!
+  # CRITICAL FIX: Ignores dynamic istiod rewrites on BOTH webhook types!
   ignoreDifferences:
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
       jsonPointers:
-        - /webhooks/0/failurePolicy
-        - /webhooks/1/failurePolicy
+        - /webhooks
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks
