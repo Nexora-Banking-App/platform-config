@@ -6,7 +6,10 @@ namespace: monitoring
 resources:
   - external-secret.yaml
 
-# Native Kustomize Secret Generator provides the static username!
+# Disable random hashing so the secret is exactly named "grafana-admin-credentials"
+generatorOptions:
+  disableNameSuffixHash: true
+
 secretGenerator:
   - name: grafana-admin-credentials
     behavior: create
