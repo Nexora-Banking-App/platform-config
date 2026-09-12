@@ -6,6 +6,13 @@ namespace: monitoring
 resources:
   - external-secret.yaml
 
+# Native Kustomize Secret Generator provides the static username!
+secretGenerator:
+  - name: grafana-admin-credentials
+    behavior: create
+    literals:
+      - admin-user=admin
+
 helmCharts:
   - name: grafana
     repo: https://grafana.github.io/helm-charts
@@ -13,13 +20,11 @@ helmCharts:
     releaseName: grafana
     namespace: monitoring
     valuesInline:
-      # Tells Grafana to use our generated secret
       admin:
         existingSecret: "grafana-admin-credentials"
         userKey: admin-user
         passwordKey: admin-password
       
-      # Automatically connects Grafana to Prometheus!
       datasources:
         datasources.yaml:
           apiVersion: 1
