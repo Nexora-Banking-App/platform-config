@@ -1,19 +1,39 @@
 ---
+# Allow the Gateway pod to receive public traffic and route to frontend & gateway
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: db-init-job-policy
+  name: nexora-gateway-policy
   namespace: nexora
 spec:
   podSelector:
     matchLabels:
-      job-name: nexora-db-init-job
+      gateway.networking.k8s.io/gateway-name: nexora-gateway
   policyTypes:
+    - Ingress
     - Egress
+  ingress:
+    - {} # Allow public ingress on port 80
   egress:
     - to:
-        - ipBlock:
-            cidr: 10.0.0.0/16
+        - podSelector:
+            matchLabels:
+              app: frontend-web
       ports:
         - protocol: TCP
-          port: 3306
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
