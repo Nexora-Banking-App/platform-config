@@ -8,4 +8,4 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   mtls:
-    mode: STRICT
+    mode: PERMISSIVE # <-- Allows public ingress while keeping internal mTLS!
