@@ -5,25 +5,21 @@ namespace: backstage
 
 helmCharts:
   - name: backstage
-    repo: https://charts.bitnami.com/bitnami
-    version: 1.3.1
+    repo: https://backstage.github.io/charts
+    version: 1.6.0 # Official Backstage chart version
     releaseName: backstage
     namespace: backstage
     valuesInline:
-      # Tell Backstage where to find our architecture catalog!
-      backstage:
-        extraAppConfig:
-          - filename: app-config.extra.yaml
-            config:
-              catalog:
-                locations:
-                  # Replace YOUR_GITHUB_ORG with 'Nexora-Banking-App'
-                  - type: url
-                    target: https://github.com/Nexora-Banking-App/nexora-apps/blob/main/catalog-info.yaml
+      # Inject the catalog configuration directly into app-config.yaml
+      appConfig:
+        catalog:
+          locations:
+            - type: url
+              target: https://github.com/Nexora-Banking-App/nexora-apps/blob/main/catalog-info.yaml
+      
+      # Resource limits for staging
       resources:
         requests:
           cpu: 100m
           memory: 512Mi
         limits:
-          cpu: 500m
-          memory: 1Gi
