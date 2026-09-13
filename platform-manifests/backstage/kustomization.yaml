@@ -10,8 +10,7 @@ helmCharts:
     releaseName: backstage
     namespace: backstage
 
-# RFC 6902 JSON PATCH:
-# Appends our 4 environment variables directly into containers[0].env without schema errors!
+# Clean RFC 6902 JSON Patch (Only scalar auth bypass keys! Zero invalid array keys!)
 patches:
   - target:
       kind: Deployment
@@ -27,13 +26,3 @@ patches:
         value:
           name: APP_CONFIG_auth_environment
           value: "development"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: APP_CONFIG_catalog_locations_0_type
-          value: "url"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: APP_CONFIG_catalog_locations_0_target
-          value: "https://raw.githubusercontent.com/Nexora-Banking-App/nexora-apps/main/catalog-info.yaml"    
