@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: nexora-workloads
   namespace: argocd
+  annotations:
+    # CRITICAL FIX: Ensures this app waits for ESO, CRDs, and Istio (Wave 0) to be 100% Healthy first!
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   project: default
   source:
@@ -19,7 +22,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - SkipDryRunOnMissingResource=true
-  # CRITICAL FIX: Tells ArgoCD to let HPA scale replicas without self-healing them!
   ignoreDifferences:
     - group: apps
       kind: Deployment

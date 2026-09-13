@@ -1,0 +1,18 @@
+Name:         db-secret
+Namespace:    nexora
+Labels:       argocd.argoproj.io/instance=nexora-workloads
+              reconcile.external-secrets.io/created-by=b993a0310654261b74fa3a6564702bd8
+Annotations:  reconcile.external-secrets.io/data-hash: 0911b948f833330babdd7b2653235b49
+
+Type:  Opaque
+
+Data
+====
+DB_HOST:                  61 bytes
+DB_NAME:                  11 bytes
+DB_PASSWORD:              24 bytes
+DB_PORT:                  4 bytes
+DB_USER:                  7 bytes
+GRAFANA_ADMIN_PASSWORD:   16 bytes
+INTERNAL_SERVICE_SECRET:  32 bytes
+JWT_SECRET:               32 bytes
