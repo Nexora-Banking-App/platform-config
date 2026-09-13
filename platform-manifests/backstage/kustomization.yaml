@@ -1,5 +1,36 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - backstage-deployment.yaml
+namespace: backstage
+
+helmCharts:
+  - name: backstage
+    repo: https://backstage.github.io/charts
+    version: 1.6.0
+    releaseName: backstage
+    namespace: backstage
+    valuesInline:
+      appConfig:
+        auth:
+          environment: development
+          providers:
+            guest:
+              dangerouslyAllowOutsideDevelopment: true
+        
+        # CRITICAL 1-LINE FIX: Bypasses the 401 Unauthorized error for Guest users!
+        backend:
+          auth:
+            dangerouslyDisableDefaultAuthPolicy: true
+
+        catalog:
+          locations:
+            - type: url
+              target: https://github.com/Nexora-Banking-App/nexora-apps/blob/main/catalog-info.yaml
+
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
