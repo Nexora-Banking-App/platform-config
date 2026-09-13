@@ -6,20 +6,24 @@ namespace: backstage
 helmCharts:
   - name: backstage
     repo: https://backstage.github.io/charts
-    version: 1.6.0 # Official Backstage chart version
+    version: 1.6.0
     releaseName: backstage
     namespace: backstage
     valuesInline:
-      # Inject the catalog configuration directly into app-config.yaml
       appConfig:
+        # CRITICAL FIX: Disables strict backend-to-backend auth for local Guest testing!
+        auth:
+          environment: development
+        
         catalog:
           locations:
             - type: url
               target: https://github.com/Nexora-Banking-App/nexora-apps/blob/main/catalog-info.yaml
       
-      # Resource limits for staging
       resources:
         requests:
           cpu: 100m
           memory: 512Mi
         limits:
+          cpu: 500m
+          memory: 1Gi
