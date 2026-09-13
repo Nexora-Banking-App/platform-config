@@ -10,22 +10,17 @@ helmCharts:
     releaseName: backstage
     namespace: backstage
     valuesInline:
-      appConfig:
-        auth:
-          environment: development
-          providers:
-            guest:
-              dangerouslyAllowOutsideDevelopment: true
-        
-        # CRITICAL 1-LINE FIX: Bypasses the 401 Unauthorized error for Guest users!
-        backend:
-          auth:
-            dangerouslyDisableDefaultAuthPolicy: true
-
-        catalog:
-          locations:
-            - type: url
-              target: https://github.com/Nexora-Banking-App/nexora-apps/blob/main/catalog-info.yaml
+      # Inject configuration directly into the container's environment variables!
+      extraEnvVars:
+        - name: APP_CONFIG_backend_auth_dangerouslyDisableDefaultAuthPolicy
+          value: "true"
+        - name: APP_CONFIG_auth_environment
+          value: "development"
+        - name: APP_CONFIG_catalog_locations_0_type
+          value: "url"
+        - name: APP_CONFIG_catalog_locations_0_target
+          # Direct raw YAML fetch (requires zero GitHub API tokens!)
+          value: "https://raw.githubusercontent.com/Nexora-Banking-App/nexora-apps/main/catalog-info.yaml"
 
       resources:
         requests:
