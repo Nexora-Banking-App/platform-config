@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backstage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app: backstage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backstage
+  template:
+    metadata:
+      labels:
+        app: backstage
+    spec:
+      containers:
+        - name: backstage
+          # Pre-compiled community image with Guest Auth enabled by default!
+          image: spotify/backstage-cookiecutter:latest
+          ports:
+            - name: http
+              containerPort: 7007
+          env:
+            # Tell Backstage exactly where to find our GitHub catalog!
+            - name: APP_CONFIG_catalog_locations_0_type
+              value: "url"
+            - name: APP_CONFIG_catalog_locations_0_target
+              value: "https://github.com/Nexora-Banking-App/nexora-apps/blob/main/catalog-info.yaml"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage
+  namespace: backstage
+spec:
+  selector:
+    app: backstage
+  ports:
+    - port: 7007
+      targetPort: 7007
