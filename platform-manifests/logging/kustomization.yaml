@@ -23,10 +23,14 @@ helmCharts:
       singleBinary:
         replicas: 1
 
-      # We use Fluent Bit as the log collector,
-      # so Grafana Agent integration is not required.
-      grafanaAgent:
-        enabled: false
+      # Disable Grafana Agent self-monitoring to prevent missing CRD errors
+      monitoring:
+        selfMonitoring:
+          enabled: false
+          grafanaAgent:
+            installOperator: false
+        lokiCanary:
+          enabled: true
 
   # 2. Fluent Bit - collects logs from Kubernetes nodes
   - name: fluent-bit
