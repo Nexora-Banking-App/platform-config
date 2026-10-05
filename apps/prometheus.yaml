@@ -12,23 +12,32 @@ spec:
     helm:
       values: |
         server:
+          # ENABLE DURABLE STORAGE!
           persistentVolume:
-            enabled: false
+            enabled: true
+            storageClass: "ebs-gp3"
+            size: 8Gi
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
               cpu: 500m
-              memory: 2Gi # <-- Increased to 2Gi so OOMKills are impossible!
+              memory: 2Gi
           livenessProbeInitialDelay: 60
           readinessProbeInitialDelay: 30
+          
         alertmanager:
-          enabled: false
+          enabled: true # ENABLE ALERTMANAGER!
+          persistentVolume:
+            enabled: true
+            storageClass: "ebs-gp3"
+            size: 2Gi
+            
         pushgateway:
           enabled: false
         nodeExporter:
-          enabled: false
+          enabled: true
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: monitoring
