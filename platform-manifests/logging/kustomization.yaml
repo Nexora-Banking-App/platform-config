@@ -47,6 +47,6 @@ helmCharts:
           [OUTPUT]
               Name loki
               Match *
-              Host loki.logging.svc.cluster.local
-              Port 3100
+              Host loki-gateway.logging.svc.cluster.local
+              Port 80
               Labels job=fluentbit
