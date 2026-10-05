@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: logging
 
 helmCharts:
-  # 1. Grafana Loki (The Log Database)
+  # 1. Grafana Loki - log database
   - name: loki
     repo: https://grafana.github.io/helm-charts
     version: 5.41.5
@@ -13,14 +13,22 @@ helmCharts:
     valuesInline:
       loki:
         auth_enabled: false
+
         commonConfig:
           replication_factor: 1
+
         storage:
           type: filesystem
+
       singleBinary:
         replicas: 1
 
-  # 2. FluentBit (The DaemonSet that collects logs from every node)
+      # We use Fluent Bit as the log collector,
+      # so Grafana Agent integration is not required.
+      grafanaAgent:
+        enabled: false
+
+  # 2. Fluent Bit - collects logs from Kubernetes nodes
   - name: fluent-bit
     repo: https://fluent.github.io/helm-charts
     version: 0.43.0
