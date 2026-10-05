@@ -1,5 +1,4 @@
----
-# Allow the Gateway pod to receive public traffic and route to frontend & gateway
+# Allow the Gateway pod to receive public traffic and route to frontend & api-gateway
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -13,15 +12,17 @@ spec:
     - Ingress
     - Egress
   ingress:
-    - {} # Allow public ingress on port 80
+    - {} # Allow public ingress (load balancer and health checks)
   egress:
+    # gateway -> frontend-web
     - to:
         - podSelector:
             matchLabels:
               app: frontend-web
       ports:
         - protocol: TCP
-          port: 80
+          port: 8080
+    # gateway -> api-gateway
     - to:
         - podSelector:
             matchLabels:
@@ -29,6 +30,15 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    # gateway -> istiod (config and certificates)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+    # DNS
     - to:
         - namespaceSelector: {}
           podSelector:
@@ -36,4 +46,6 @@ spec:
               k8s-app: kube-dns
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
