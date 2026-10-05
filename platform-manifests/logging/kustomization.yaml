@@ -23,7 +23,10 @@ helmCharts:
       singleBinary:
         replicas: 1
 
-      # Disable Grafana Agent self-monitoring to prevent missing CRD errors
+      # Disable tests to pass validation when self-monitoring is off
+      test:
+        enabled: false
+
       monitoring:
         selfMonitoring:
           enabled: false
