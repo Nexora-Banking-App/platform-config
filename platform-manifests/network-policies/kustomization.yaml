@@ -7,3 +7,4 @@ resources:
   - namespace.yaml
   - default-deny.yaml
   - microservice-rules.yaml
+  - policies.yaml
