@@ -28,12 +28,13 @@ This repository is the **GitOps Root** for the Nexora Enterprise Platform. Follo
 ## Table of Contents
 
 1. [Architectural Philosophy](#architectural-philosophy)
-2. [Directory Structure](#directory-structure)
-3. [The App-of-Apps Synchronization Model](#the-app-of-apps-synchronization-model)
-4. [Platform Component Specifications](#platform-component-specifications)
-5. [Operator Tooling & Local Access](#operator-tooling--local-access)
-6. [Real-World Troubleshooting & Solutions](#real-world-troubleshooting--solutions)
-7. [Known Gaps & Open Items](#known-gaps--open-items)
+2. [Current Staging Deployment](#current-staging-deployment)
+3. [Directory Structure](#directory-structure)
+4. [The App-of-Apps Synchronization Model](#the-app-of-apps-synchronization-model)
+5. [Platform Component Specifications](#platform-component-specifications)
+6. [Operator Tooling & Local Access](#operator-tooling--local-access)
+7. [Real-World Troubleshooting & Solutions](#real-world-troubleshooting--solutions)
+8. [Known Gaps & Open Items](#known-gaps--open-items)
 
 ---
 
@@ -45,6 +46,23 @@ Terraform installs the core Kubernetes operators (ArgoCD, Istio Base/Istiod, Arg
 
 Application workloads (`nexora-apps`) do not configure their own security policies, service meshes, or cluster-scoped namespaces; the platform layer declares these primitives centrally to enforce corporate compliance and zero-trust isolation.
 
+### Current Staging Deployment
+
+Verified **2026-10-06** on the `nexora-staging` EKS cluster in `us-east-1`:
+
+| Component | Deployed configuration |
+|---|---|
+| EKS workers | Two `m7i-flex.large` nodes; Kubernetes `1.33` |
+| Argo CD | `2.10.9`; annotation-plus-label resource tracking |
+| Service mesh | Istio `1.22.0`; namespace-level `PeerAuthentication` is `PERMISSIVE` |
+| Workloads | `nexora-workloads` points to the staging Kustomize overlay in `app-manifests` |
+| Streaming | Strimzi `1.2.0`; Kafka `4.3.1`, three KRaft broker/controller replicas |
+| Monitoring | Prometheus server and Alertmanager use persistent `ebs-gp3` claims (8 GiB and 2 GiB); the fraud CPU alert is a native Prometheus rule |
+| Secrets | External Secrets Operator reads AWS Secrets Manager through IRSA |
+
+At verification, every Argo CD application was **Synced/Healthy**. Production
+manifests exist in the repositories, but this status describes staging only.
+
 ---
 
 ## Directory Structure
@@ -52,19 +70,27 @@ Application workloads (`nexora-apps`) do not configure their own security polici
 ```text
 platform-config/
 ├── apps/                               <-- ArgoCD Application Manifests (Root App-of-Apps Targets)
-│   ├── external-secrets.yaml           <-- ESO Helm chart & SecretStore
-│   ├── gateway-api.yaml                <-- Official Kubernetes Gateway API CRDs
+│   ├── external-secrets.yml            <-- ESO Helm chart & SecretStore
+│   ├── gateway-api.yml                 <-- Kubernetes Gateway API CRDs
 │   ├── grafana.yaml                    <-- Grafana Helm deployment & datasources
-│   ├── istio.yaml                      <-- Istio mTLS PeerAuthentication policies
-│   ├── network-policies.yaml           <-- Zero-Trust microsegmentation & Namespace
-│   ├── nexora-workloads.yaml           <-- Workload pointer to app-manifests (Sync Wave 5)
-│   └── prometheus.yaml                 <-- In-memory Prometheus monitoring stack
+│   ├── kafka.yaml                      <-- Kafka cluster (Sync Wave 3)
+│   ├── istio.yaml                      <-- Istio mTLS policies
+│   ├── network-policies.yaml           <-- Zero-Trust microsegmentation
+│   ├── nexora-workloads.yml            <-- Workload pointer (Sync Wave 5)
+│   ├── prometheus.yaml                 <-- Persistent Prometheus monitoring stack
+│   ├── storage.yaml                    <-- EBS StorageClass
+│   └── strimzi.yaml                    <-- Strimzi operator and CRDs (Sync Wave 1)
 │
 ├── platform-manifests/                 <-- The Kustomize Blueprints & Configurations
 │   ├── external-secrets/               <-- SecretStore & ESO CRD definitions
 │   ├── grafana/                        <-- Kustomize overlay & ESO password binding
 │   ├── istio/                          <-- PeerAuthentication mTLS rules
+│   ├── kafka/                          <-- Strimzi Kafka, topics, users, and access policy
 │   ├── network-policies/               <-- Unified policies.yaml (Default-deny + microservice rules)
+│   ├── nexora-workloads/               <-- Application-manifest pointer
+│   ├── prometheus/                     <-- Helm values, alerts, and SMTP ExternalSecret
+│   ├── storage/                        <-- EBS StorageClass
+│   ├── strimzi/                        <-- Strimzi operator chart
 │   └── backstage/                      <-- Spotify Backstage IDP Helm chart & RFC 6902 JSON patch
 │
 └── scripts/
@@ -81,17 +107,19 @@ Instead of managing individual applications manually, the platform uses an **App
 [ Terraform Root Application: platform-bootstrap ]
                         │
                         ▼ (Watches platform-config/apps/)
-     ┌──────────────────┼──────────────────┬──────────────────┐
-     ▼ (Wave 0)         ▼ (Wave 0)         ▼ (Wave 0)         ▼ (Wave 5)
-[ gateway-api ]    [ istio-mesh ]     [ network-policies ] [ nexora-workloads ]
-(Installs CRDs)    (Enforces mTLS)    (Creates Namespace   (Deploys banking
-                                       & Default-Deny)      microservices)
+     ┌──────────────────┼──────────────────┬───────────────────┐
+     ▼ (Wave 0)         ▼ (Wave 1)         ▼ (Wave 3)          ▼ (Wave 5)
+[ platform basics ] [ Strimzi operator ] [ Kafka cluster ] [ nexora-workloads ]
+(CRDs, ESO, mesh,                       (topics and users)  (banking services)
+ network policies)
 ```
 
 ### Sync Wave Discipline: Eliminating Bootstrapping Races
 To prevent workloads from attempting to mount secrets or attach to namespaces before platform controllers are healthy:
-* **Wave 0:** Infrastructure components (`gateway-api`, `external-secrets`, `network-policies`, `istio`).
-* **Wave 5:** `nexora-workloads` (Guarantees that AWS Secrets Manager credentials, namespaces, and mTLS sidecars are 100% active before banking pods attempt to boot).
+* **Wave 0:** Prerequisites including Gateway API CRDs, External Secrets, storage, network policies, and Istio.
+* **Wave 1:** Strimzi operator and Kafka CRDs.
+* **Wave 3:** Kafka cluster, topics, and users.
+* **Wave 5:** `nexora-workloads`.
 
 ---
 
@@ -113,11 +141,17 @@ Consolidated into a single file (`policies.yaml`) to eliminate Kustomize file-ac
 * **ClusterSecretStore:** Binds to AWS Secrets Manager in `us-east-1` using the pod's IRSA ServiceAccount.
 * **Zero Plaintext Secrets:** Completely eliminates static secrets in Git. Pulls database passwords, JWT encryption keys, and internal service secrets dynamically into Kubernetes memory.
 
-### 4. Observability Stack (`/prometheus` & `/grafana`)
-* **Prometheus:** Deployed in-memory (`emptyDir`) without persistent volume claims to prevent AWS EBS CSI storage driver dependencies in Staging. Sized with 2 GB RAM limit to prevent TSDB initialization OOMKills.
+### 4. Kafka (`/strimzi` & `/kafka`)
+* Strimzi `1.2.0` manages a three-replica Kafka `4.3.1` KRaft cluster in the `kafka` namespace.
+* Each combined broker/controller requests `100m` CPU and `1Gi` memory, and uses a 20 GiB `ebs-gp3` claim. Kafka uses internal TLS with SCRAM-SHA-512, three-way topic replication, and a minimum in-sync replica count of two.
+* Kafka PVs currently use the `Retain` reclaim policy. Preserve and explicitly rebind retained volumes when recovering the cluster; do not assume a fresh cluster automatically adopts them.
+
+### 5. Observability Stack (`/prometheus` & `/grafana`)
+* **Prometheus:** Uses an 8 GiB persistent `ebs-gp3` claim, with 256 MiB requested and 2 GiB limited memory. Fraud-service CPU alert rules are rendered into Prometheus' native `alerting_rules.yml`.
+* **Alertmanager:** Uses a 2 GiB persistent `ebs-gp3` claim. SMTP credentials are mounted from an ExternalSecret-backed Kubernetes Secret; no password is stored in Git.
 * **Grafana:** Pre-configured with automated Prometheus datasource bindings. Secret credentials (`admin-password`) are pulled dynamically from AWS Secrets Manager via ESO, using `disableNameSuffixHash: true` to prevent Kustomize name mismatches.
 
-### 5. Developer Experience: Backstage IDP (`/backstage`)
+### 6. Developer Experience: Backstage IDP (`/backstage`)
 * Deployed via the official Backstage Helm chart.
 * **RFC 6902 JSON Patch:** Injects `APP_CONFIG_backend_auth_dangerouslyDisableDefaultAuthPolicy = true` and `APP_CONFIG_auth_environment = development` directly into the container spec, allowing unauthenticated Guest access for development demos.
 * Imports the core banking catalog and visualizes inter-service dependencies.
@@ -162,7 +196,7 @@ cd platform-config
 ### 3. Prometheus Server OOMKilled at 57 Seconds
 * **Symptom:** `prometheus-server` repeatedly entered `CrashLoopBackOff` (Exit Code 137) roughly one minute after boot.
 * **Diagnosis:** Prometheus started with 256Mi memory. At 30 seconds, it began actively scraping metrics from 8 microservices, AWS CNI, and the EKS control plane. The metric buffer exceeded 256Mi, triggering a kernel OOMKill.
-* **Fix:** Increased the memory allocation to 2 GiB in `apps/prometheus.yaml`, providing sufficient headroom for TSDB block indexing.
+* **Fix:** Increased the memory limit to 2 GiB in `platform-manifests/prometheus/kustomization.yaml`, providing sufficient headroom for TSDB block indexing.
 
 ### 4. Database Init Job Connection Refused (Error 111)
 * **Symptom:** `nexora-db-init-job` failed to connect to MySQL on AWS RDS with `ERROR 2003 (HY000): Can't connect to MySQL server (111)`.
@@ -173,6 +207,5 @@ cd platform-config
 
 ## Known Gaps & Open Items
 
-* **Prometheus Ephemeral Storage:** Prometheus runs in-memory without persistent volumes. Metrics history is lost upon pod restarts. Production deployments require provisioning the AWS EBS CSI driver and binding to an encrypted `gp3` StorageClass.
 * **Istio Ingress mTLS Permissive Mode:** `PeerAuthentication` is configured with `mode: PERMISSIVE` rather than `STRICT` at the namespace root to accommodate plain HTTP traffic forwarded by the Ingress Load Balancer. In a strict zero-trust audit, mTLS should be terminated at the Gateway pod, and a `DestinationRule` should enforce strict mTLS for all subsequent internal hops.
 * **Backstage Development Auth Bypass:** `dangerouslyDisableDefaultAuthPolicy: true` is enabled via Kustomize patch to allow unauthenticated guest evaluation for demonstration purposes. In a true production deployment, this bypass is removed, and Backstage must be integrated with an enterprise identity provider (e.g., GitHub OAuth, Okta, or Keycloak).
