@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nexora-alerts
+  namespace: monitoring
+  labels:
+    release: prometheus # Tells Prometheus to auto-load this rule!
+spec:
+  groups:
+    - name: nexora-workloads
+      rules:
+        - alert: HighFraudServiceCPU
+          # Alerts if Fraud Service CPU spikes above 80%
+          expr: sum(rate(container_cpu_usage_seconds_total{pod=~"fraud-service.*"}[1m])) > 0.8
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Fraud Service CPU usage is CRITICAL (>80%)"
+            description: "Fraud Service is under heavy compute load. HPA should be triggering."

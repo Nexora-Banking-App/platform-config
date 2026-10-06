@@ -1,0 +1,69 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - external-secret.yaml
+  - rules.yaml
+
+helmCharts:
+  - name: prometheus
+    repo: https://prometheus-community.github.io/helm-charts
+    version: 25.21.0
+    releaseName: prometheus
+    namespace: monitoring
+    valuesInline:
+      server:
+        # DURABLE STORAGE RETAINED!
+        persistentVolume:
+          enabled: true
+          storageClass: "ebs-gp3"
+          size: 8Gi
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 2Gi
+        livenessProbeInitialDelay: 60
+        readinessProbeInitialDelay: 30
+
+      alertmanager:
+        enabled: true
+        # DURABLE STORAGE RETAINED!
+        persistentVolume:
+          enabled: true
+          storageClass: "ebs-gp3"
+          size: 2Gi
+        
+        # Inject the Gmail password dynamically from the ESO secret!
+        alertmanagerSpec:
+          envFrom:
+            - secretRef:
+                name: alertmanager-smtp-secret
+        
+        config:
+          global:
+            smtp_smarthost: 'smtp.gmail.com:587'
+            smtp_from: 'ahmedkhater2611@gmail.com'
+            smtp_require_tls: true
+          route:
+            receiver: 'email-alerts'
+            group_wait: 30s
+            group_interval: 1m
+            repeat_interval: 1h
+          receivers:
+            - name: 'email-alerts'
+              email_configs:
+                - to: 'ahmedkhater2611@gmail.com'
+                  send_resolved: true
+                  # Reads dynamically injected ENV vars:
+                  auth_username: '{{ .Env.smtp_email }}'
+                  auth_password: '{{ .Env.smtp_password }}'
+
+      pushgateway:
+        enabled: false
+      nodeExporter:
+        enabled: true # KEPT ENABLED!

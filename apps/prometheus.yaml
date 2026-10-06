@@ -6,38 +6,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: 'https://prometheus-community.github.io/helm-charts'
-    targetRevision: '25.21.0'
-    chart: prometheus
-    helm:
-      values: |
-        server:
-          # ENABLE DURABLE STORAGE!
-          persistentVolume:
-            enabled: true
-            storageClass: "ebs-gp3"
-            size: 8Gi
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 2Gi
-          livenessProbeInitialDelay: 60
-          readinessProbeInitialDelay: 30
-          
-        alertmanager:
-          enabled: true # ENABLE ALERTMANAGER!
-          persistentVolume:
-            enabled: true
-            storageClass: "ebs-gp3"
-            size: 2Gi
-            
-        pushgateway:
-          enabled: false
-        nodeExporter:
-          enabled: true
+    repoURL: 'https://github.com/Nexora-Banking-App/platform-config.git'
+    targetRevision: HEAD
+    path: platform-manifests/prometheus
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: monitoring
