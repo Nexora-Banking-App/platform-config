@@ -6,7 +6,6 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: ebs.csi.aws.com
 volumeBindingMode: WaitForFirstConsumer
-reclaimPolicy: Retain
 parameters:
   type: gp3
   encrypted: "true" # Best Practice: Encrypt monitoring data at rest!
