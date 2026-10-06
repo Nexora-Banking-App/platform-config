@@ -27,3 +27,9 @@ spec:
       labels:
         # Kafka brokers must NOT get an Istio sidecar
         istio-injection: disabled
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: kafkas.kafka.strimzi.io
+      jsonPointers:
+        - /spec/versions/0/schema/openAPIV3Schema/properties/status/properties/clusterSecurity/properties

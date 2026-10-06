@@ -5,7 +5,6 @@ namespace: monitoring
 
 resources:
   - external-secret.yaml
-  - rules.yaml
 
 helmCharts:
   - name: prometheus
@@ -14,6 +13,20 @@ helmCharts:
     releaseName: prometheus
     namespace: monitoring
     valuesInline:
+      serverFiles:
+        alerting_rules.yml:
+          groups:
+            - name: nexora-workloads
+              rules:
+                - alert: HighFraudServiceCPU
+                  expr: 'sum(rate(container_cpu_usage_seconds_total{pod=~"fraud-service.*"}[1m])) > 0.8'
+                  for: 1m
+                  labels:
+                    severity: critical
+                  annotations:
+                    summary: "Fraud Service CPU usage is CRITICAL (>80%)"
+                    description: "Fraud Service is under heavy compute load. HPA should be triggering."
+
       server:
         # DURABLE STORAGE RETAINED!
         persistentVolume:
@@ -29,21 +42,19 @@ helmCharts:
             memory: 2Gi
         livenessProbeInitialDelay: 60
         readinessProbeInitialDelay: 30
-
       alertmanager:
         enabled: true
-        # DURABLE STORAGE RETAINED!
-        persistentVolume:
+        persistence:
           enabled: true
           storageClass: "ebs-gp3"
           size: 2Gi
-        
-        # Inject the Gmail password dynamically from the ESO secret!
-        alertmanagerSpec:
-          envFrom:
-            - secretRef:
-                name: alertmanager-smtp-secret
-        
+
+        extraSecretMounts:
+          - name: smtp-credentials
+            mountPath: /etc/alertmanager/secrets
+            secretName: alertmanager-smtp-secret
+            readOnly: true
+
         config:
           global:
             smtp_smarthost: 'smtp.gmail.com:587'
@@ -59,9 +70,8 @@ helmCharts:
               email_configs:
                 - to: 'ahmedkhater2611@gmail.com'
                   send_resolved: true
-                  # Reads dynamically injected ENV vars:
-                  auth_username: '{{ .Env.smtp_email }}'
-                  auth_password: '{{ .Env.smtp_password }}'
+                  auth_username: 'ahmedkhater2611@gmail.com'
+                  auth_password_file: /etc/alertmanager/secrets/smtp-password
 
       pushgateway:
         enabled: false
