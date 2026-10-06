@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: strimzi-operator
+  namespace: argocd
+  annotations:
+    # After platform-storage (wave 0), before the Kafka cluster (wave 3)
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Nexora-Banking-App/platform-config.git'
+    targetRevision: HEAD
+    path: platform-manifests/strimzi
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: kafka
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The Kafka CRD is larger than the 256KB client-side-apply annotation limit
+      - ServerSideApply=true
+    managedNamespaceMetadata:
+      labels:
+        # Kafka brokers must NOT get an Istio sidecar
+        istio-injection: disabled

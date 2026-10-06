@@ -8,3 +8,4 @@ resources:
   - default-deny.yaml
   - microservice-rules.yaml
   - policies.yaml
+  - kafka-client-rules.yaml

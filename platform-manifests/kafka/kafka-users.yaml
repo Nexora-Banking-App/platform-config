@@ -1,0 +1,109 @@
+# One user per service, with only the access that service needs.
+# Strimzi writes each user's password into a Secret of the same name in the kafka namespace.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: transaction-service
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: nexora-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: transactions.events
+          patternType: literal
+        operations:
+          - Describe
+          - Write
+        host: "*"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: auth-service
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: nexora-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: users.events
+          patternType: literal
+        operations:
+          - Describe
+          - Write
+        host: "*"
+      - resource:
+          type: topic
+          name: auth.events
+          patternType: literal
+        operations:
+          - Describe
+          - Write
+        host: "*"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: fraud-service
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: nexora-kafka
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      # Consume transfers and login events
+      - resource:
+          type: topic
+          name: transactions.events
+          patternType: literal
+        operations:
+          - Describe
+          - Read
+        host: "*"
+      - resource:
+          type: topic
+          name: auth.events
+          patternType: literal
+        operations:
+          - Describe
+          - Read
+        host: "*"
+      # Consumer group used by every fraud-service pod
+      - resource:
+          type: group
+          name: fraud-service
+          patternType: literal
+        operations:
+          - Read
+        host: "*"
+      # Publish alerts, and park events it cannot process
+      - resource:
+          type: topic
+          name: fraud.alerts
+          patternType: literal
+        operations:
+          - Describe
+          - Write
+        host: "*"
+      - resource:
+          type: topic
+          name: transactions.events.dlq
+          patternType: literal
+        operations:
+          - Describe
+          - Write
+        host: "*"

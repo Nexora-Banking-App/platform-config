@@ -1,0 +1,27 @@
+# Adds Kafka access for the three services that talk to it.
+# NetworkPolicies are additive, so this does not change the existing per-service policies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-client-egress
+  namespace: nexora
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["transaction-service", "auth-service", "fraud-service"]
+  policyTypes:
+    - Egress
+  egress:
+    # service -> Kafka brokers (bootstrap and per-broker connections, TLS listener)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kafka
+          podSelector:
+            matchLabels:
+              strimzi.io/cluster: nexora-kafka
+      ports:
+        - protocol: TCP
+          port: 9093

@@ -1,0 +1,34 @@
+# Lets External Secrets Operator (via the eso-kafka-reader ServiceAccount in the nexora
+# namespace) read ONLY the secrets the services need from the kafka namespace:
+# the cluster CA certificate and each service's own Kafka password.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-kafka-secret-reader
+  namespace: kafka
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames:
+      - nexora-kafka-cluster-ca-cert
+      - transaction-service
+      - auth-service
+      - fraud-service
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectrulesreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-kafka-secret-reader
+  namespace: kafka
+subjects:
+  - kind: ServiceAccount
+    name: eso-kafka-reader
+    namespace: nexora
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-kafka-secret-reader
