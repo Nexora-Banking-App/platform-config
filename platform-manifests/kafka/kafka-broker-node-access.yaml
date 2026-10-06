@@ -1,0 +1,15 @@
+# Lets the Kafka broker pods read their own node (to learn its availability zone).
+# Rack awareness needs this. Strimzi normally creates a binding like this itself;
+# defining it in Git makes it explicit and independent of the operator's RBAC.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nexora-kafka-broker-node-reader
+subjects:
+  - kind: ServiceAccount
+    name: nexora-kafka-kafka
+    namespace: kafka
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: strimzi-kafka-broker

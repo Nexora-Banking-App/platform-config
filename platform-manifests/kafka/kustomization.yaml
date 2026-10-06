@@ -7,3 +7,4 @@ resources:
   - kafka-topics.yaml
   - kafka-users.yaml
   - eso-reader-rbac.yaml
+  - kafka-broker-node-access.yaml
