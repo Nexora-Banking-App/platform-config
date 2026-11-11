@@ -227,10 +227,31 @@ helmCharts:
             smtp_require_tls: true
           route:
             receiver: 'email-alerts'
+            group_by: ['alertname', 'namespace', 'app']
             group_wait: 30s
-            group_interval: 1m
-            repeat_interval: 1h
+            group_interval: 5m
+            repeat_interval: 4h
+            routes:
+              # Heartbeat alert: no notification. A dead-man's-switch receiver
+              # can replace 'null' here later.
+              - receiver: 'null'
+                matchers:
+                  - alertname="Watchdog"
+              - receiver: 'email-alerts'
+                matchers:
+                  - severity="critical"
+                repeat_interval: 30m
+          inhibit_rules:
+            # A node that is down explains the alerts for everything on it.
+            # Only alerts that carry the same `node` label are muted.
+            - source_matchers:
+                - alertname="NodeNotReady"
+              target_matchers:
+                - severity=~"warning|critical"
+                - alertname!="NodeNotReady"
+              equal: ['node']
           receivers:
+            - name: 'null'
             - name: 'email-alerts'
               email_configs:
                 - to: 'ahmedkhater2611@gmail.com'
