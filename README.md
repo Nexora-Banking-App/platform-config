@@ -22,6 +22,24 @@ This repository is the **GitOps Root** for the Nexora Enterprise Platform. Follo
 
 ---
 
+## At a Glance
+
+**What this repository is:** everything that runs on the cluster *around* the banking services. ArgoCD reads it and keeps the cluster equal to it.
+
+| Path | Contents |
+|---|---|
+| `apps/` | ArgoCD Applications for **staging** (the root app installed by Terraform watches this folder) |
+| `apps-prod/` | ArgoCD Applications for **prod** (kube-prometheus-stack, Grafana Operator, prod secrets role) |
+| `platform-manifests/` | Kustomize + Helm configuration: Istio policy, NetworkPolicies, External Secrets, Kafka, Prometheus, Alertmanager, Grafana and dashboards, Loki, Fluent Bit, Tempo, OpenTelemetry Collector, Backstage, storage |
+| `platform-manifests-prod/` | Prod-only pieces: ServiceMonitor, PrometheusRule, Grafana custom resources |
+| `runbooks/` | One runbook per alert |
+| `scripts/` | `open-dashboards.sh` (operator dashboards), `sync-prod-rules.py` (prod rules from staging rules) |
+| `.github/` | PR validation: every kustomization renders, rules and Alertmanager config lint, every alert has a runbook |
+
+**What it does not contain:** the services' own manifests (`app-manifests`), their code (`nexora-apps`), or cloud infrastructure (`infra-live`).
+
+---
+
 ## Table of Contents
 
 1. [Architectural Philosophy](#architectural-philosophy)
@@ -131,6 +149,8 @@ To prevent workloads from attempting to mount secrets or attach to namespaces be
 * **Wave 3:** Kafka cluster, topics, and users.
 * **Wave 5:** `nexora-workloads`.
 
+Monitoring, logging and tracing have no wave: nothing waits for them. The prod set (`apps-prod/`) follows the same idea: operators in wave 1, the custom resources that need their CRDs (`monitoring-config`) in wave 3, workloads in wave 5.
+
 ---
 
 ## Platform Component Specifications
@@ -226,20 +246,24 @@ Grafana datasources (fixed uids): `prometheus`, `alertmanager`, `loki`, `tempo`.
 
 ## Operator Tooling & Local Access
 
-In compliance with enterprise banking security, administrative control planes (ArgoCD, Grafana, Backstage) are **never exposed to the public internet**.
-
-Platform engineers access internal tooling via cluster-authenticated port-forwarding (governed by AWS IAM Access Entries on the EKS cluster):
+Administrative tools (ArgoCD, Grafana, Prometheus, Alertmanager, Backstage) are **never exposed to the public internet**. They are reached through `kubectl port-forward`, so access is whatever your AWS IAM access entry on the cluster allows.
 
 ```bash
 cd platform-config
-./scripts/open-dashboards.sh
+./scripts/open-dashboards.sh            # start tunnels and open browser tabs
+./scripts/open-dashboards.sh --no-open  # start tunnels only, print the URLs
 ```
 
-**Automated Launcher Output:**
-* **Banking Application:** `http://<AWS_LOAD_BALANCER_URL>` (Public Ingress)
-* **ArgoCD GitOps Dashboard:** `https://localhost:8081` *(User: admin)*
-* **Grafana Observability Suite:** `http://localhost:3000` *(User: admin, Password pulled from AWS Secrets Manager)*
-* **Backstage Developer Portal:** `http://localhost:7007` *(Guest Login)*
+| Dashboard | Local URL | Notes |
+|---|---|---|
+| ArgoCD | `https://localhost:8081` | user `admin` |
+| Grafana | `http://localhost:3000` | user `admin`; dashboards in the "Nexora" folder, logs (Loki) and traces (Tempo) under Explore |
+| Prometheus | `http://localhost:9090` | targets, rules, ad-hoc queries |
+| Alertmanager | `http://localhost:9093` | firing alerts, silences |
+| Backstage | `http://localhost:7007` | guest login |
+| Banking app | the gateway's load balancer address | public |
+
+The script works on both layouts (staging charts, prod kube-prometheus-stack and Grafana Operator), skips anything that is not installed, prints the commands that reveal the admin passwords instead of the passwords, and closes only its own tunnels on Ctrl+C.
 
 ![alt text](screenshots/argocd.png)
 
@@ -265,7 +289,7 @@ cd platform-config
 ### 4. Database Init Job Connection Refused (Error 111)
 * **Symptom:** `nexora-db-init-job` failed to connect to MySQL on AWS RDS with `ERROR 2003 (HY000): Can't connect to MySQL server (111)`.
 * **Diagnosis:** Two compounding issues: (1) `default-deny-all` NetworkPolicy blocked all egress from the job pod. (2) Istio injected an unready Envoy sidecar into the one-off batch job, which reset the TCP connection.
-* **Fix:** Added a dedicated egress NetworkPolicy rule for the job pod, and added the `sidecar.istio.io/inject: "false"` annotation to the job template to bypass Istio iptables interception entirely.
+* **Fix:** Added a dedicated egress NetworkPolicy rule for the job pod (`db-init-egress`, selecting `app: db-init`), and added the `sidecar.istio.io/inject: "false"` annotation to the job template to bypass Istio iptables interception entirely.
 
 ---
 
@@ -273,6 +297,8 @@ cd platform-config
 
 * **NetworkPolicies are not enforced yet:** see "Enforcement" under Zero-Trust Network Policies. This is the most important open item for the zero-trust claim.
 * **Mutable Git references:** every ArgoCD Application tracks `HEAD`. Pinning to tags or commit SHAs would make a deployment reproducible and a rollback a one-line change.
-
+* **Single-replica observability:** Prometheus, Loki (single binary, filesystem storage) and Tempo each run as one pod on one volume. That fits staging; production would need replicated or object-store-backed setups. The Tempo single-binary chart is also marked deprecated upstream.
+* **Observability not yet seen live:** the rules, dashboards, log labels and tracing pipeline are linted and rendered, but were added after the last staging verification.
+* **No Kafka in the prod app set yet.**
 * **Istio Ingress mTLS Permissive Mode:** `PeerAuthentication` is configured with `mode: PERMISSIVE` rather than `STRICT` at the namespace root to accommodate plain HTTP traffic forwarded by the Ingress Load Balancer. In a strict zero-trust audit, mTLS should be terminated at the Gateway pod, and a `DestinationRule` should enforce strict mTLS for all subsequent internal hops.
 * **Backstage Development Auth Bypass:** `dangerouslyDisableDefaultAuthPolicy: true` is enabled via Kustomize patch to allow unauthenticated guest evaluation for demonstration purposes. In a true production deployment, this bypass is removed, and Backstage must be integrated with an enterprise identity provider (e.g., GitHub OAuth, Okta, or Keycloak).
