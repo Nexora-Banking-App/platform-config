@@ -1,6 +1,3 @@
-
-***
-
 <div align="center">
 
 # Nexora Core Banking: Platform Configuration (`platform-config`)
@@ -142,6 +139,8 @@ To prevent workloads from attempting to mount secrets or attach to namespaces be
 Split into one file per concern (`default-deny.yaml`, `microservice-rules.yaml`, `policies.yaml` for the gateway, `kafka-client-rules.yaml`, `prometheus-scrape.yaml`, `tracing-egress.yaml`). NetworkPolicies are additive, so each file only adds access.
 * **Namespace Ownership:** Centrally creates `Namespace/nexora` with the `istio-injection: enabled` label baked in.
 * **Default-Deny:** Drops all ingress and egress network traffic across the namespace by default (only DNS port 53 is whitelisted).
+* **Platform rules:** every pod may reach istiod (15012) and the OpenTelemetry Collector (4317/4318); Prometheus may scrape every pod (8000, 15020); the `db-init` job may reach MySQL.
+* **Enforcement:** Kubernetes enforces NetworkPolicies only when the CNI does. On EKS that requires `enable_network_policy = true` on the EKS module (VPC CNI network policy agent), which no environment sets yet. Until then these policies document the intended segmentation but do not block traffic. Enable it in staging first and check that every workload stays healthy.
 * **Explicit Microsegmentation:**
   * `api-gateway`: Allowed ingress from Load Balancer; egress to `auth`, `account`, and `transaction` services.
   * `transaction-service`: Ingress from `api-gateway` and `auth-service`; egress to `fraud-service` and MySQL port 3306.
@@ -202,6 +201,8 @@ Recording rules `sli:transfer_errors:ratio_rate5m` and `sli:transfer_errors:rati
 
 Grafana datasources (fixed uids): `prometheus`, `alertmanager`, `loki`, `tempo`. The admin password comes from AWS Secrets Manager via ESO.
 
+**Retention and storage:** Prometheus keeps 15 days (chart default) on 8 GiB, Loki keeps 7 days, Tempo keeps 72 hours. The `ebs-gp3` StorageClass allows volume expansion, so a full volume can be grown from Git.
+
 **Logs:** Fluent Bit sends container logs to Loki with four stream labels only: `namespace`, `pod`, `container`, `app`. Health-probe and metrics-scrape lines are dropped. The services write JSON, so everything else (`correlation_id`, `status`, `duration_ms`, `trace_id`) is queried with `| json`.
 
 **Traces:** the services export OTLP to an OpenTelemetry Collector (`memory_limiter`, `k8sattributes`, tail sampling: every error, every trace slower than 1 s, 10% of the rest), which forwards to Tempo. Grafana links traces to logs through `trace_id`. NetworkPolicy `allow-otlp-egress` opens ports 4317/4318 to the collector.
@@ -213,7 +214,6 @@ Grafana datasources (fixed uids): `prometheus`, `alertmanager`, `loki`, `tempo`.
 * Canary weights are approximated by pod count (no Istio traffic routing for the rollout); the canary analysis measures the whole service, not the canary pods alone.
 * Tracing is new and unverified on a live cluster. Prometheus exemplars are configured in Grafana but the services do not emit them yet.
 * `HighHTTPLatencyP99` includes health probes, because the high-resolution histogram has no handler label.
-* The chart values `pushgateway.enabled` and `nodeExporter.enabled` in the staging Prometheus kustomization are not keys this chart version reads (the real keys are `prometheus-pushgateway` and `prometheus-node-exporter`), so the Pushgateway is still deployed.
 
 ### 6. Developer Experience: Backstage IDP (`/backstage`)
 * Deployed via the official Backstage Helm chart.
@@ -270,6 +270,9 @@ cd platform-config
 ---
 
 ## Known Gaps & Open Items
+
+* **NetworkPolicies are not enforced yet:** see "Enforcement" under Zero-Trust Network Policies. This is the most important open item for the zero-trust claim.
+* **Mutable Git references:** every ArgoCD Application tracks `HEAD`. Pinning to tags or commit SHAs would make a deployment reproducible and a rollback a one-line change.
 
 * **Istio Ingress mTLS Permissive Mode:** `PeerAuthentication` is configured with `mode: PERMISSIVE` rather than `STRICT` at the namespace root to accommodate plain HTTP traffic forwarded by the Ingress Load Balancer. In a strict zero-trust audit, mTLS should be terminated at the Gateway pod, and a `DestinationRule` should enforce strict mTLS for all subsequent internal hops.
 * **Backstage Development Auth Bypass:** `dangerouslyDisableDefaultAuthPolicy: true` is enabled via Kustomize patch to allow unauthenticated guest evaluation for demonstration purposes. In a true production deployment, this bypass is removed, and Backstage must be integrated with an enterprise identity provider (e.g., GitHub OAuth, Okta, or Keycloak).
