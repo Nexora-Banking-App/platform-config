@@ -1,0 +1,124 @@
+name: "Validate platform config"
+
+# Runs on every pull request. ArgoCD deploys main automatically, so a manifest
+# that does not render or a rule Prometheus rejects must be caught here.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUSTOMIZE_VERSION: "5.4.3"
+  PROMETHEUS_VERSION: "2.53.2"
+  ALERTMANAGER_VERSION: "0.27.0"
+
+jobs:
+  kustomize-build:
+    name: "kustomize build (every kustomization)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar xz
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Build every kustomization
+        run: |
+          status=0
+          for file in $(find platform-manifests platform-manifests-prod -name kustomization.yaml -not -path '*/charts/*' | sort); do
+            dir=$(dirname "$file")
+            # These two only point at the app-manifests repo, which has its own checks
+            case "$dir" in */nexora-workloads) echo "skip  $dir"; continue ;; esac
+            if kustomize build --enable-helm "$dir" > /dev/null; then
+              echo "ok    $dir"
+            else
+              echo "::error::kustomize build failed for $dir"
+              status=1
+            fi
+          done
+          exit $status
+
+  rules:
+    name: "promtool + amtool + dashboards"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize, promtool, amtool
+        run: |
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar xz
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" | tar xz
+          curl -fsSL "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz" | tar xz
+          sudo mv kustomize "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" "alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool" /usr/local/bin/
+          pip install pyyaml
+
+      - name: Extract rendered rules and Alertmanager config (staging)
+        run: |
+          kustomize build --enable-helm platform-manifests/prometheus > rendered.yaml
+          python3 - <<'EOF'
+          import yaml
+          for doc in yaml.safe_load_all(open("rendered.yaml")):
+              if not doc or doc.get("kind") != "ConfigMap":
+                  continue
+              name = doc["metadata"]["name"]
+              if name == "prometheus-server":
+                  for key in ("alerting_rules.yml", "recording_rules.yml"):
+                      open(key, "w").write(doc["data"][key])
+              if name == "prometheus-alertmanager":
+                  open("alertmanager.yml", "w").write(doc["data"]["alertmanager.yml"])
+          EOF
+
+      - name: promtool check rules
+        run: promtool check rules alerting_rules.yml recording_rules.yml
+
+      - name: amtool check-config
+        run: amtool check-config alertmanager.yml
+
+      - name: Every alert has a runbook and the required labels
+        run: |
+          python3 - <<'EOF'
+          import pathlib, sys, yaml
+          problems = []
+          for group in yaml.safe_load(open("alerting_rules.yml"))["groups"]:
+              for rule in group["rules"]:
+                  name = rule.get("alert")
+                  if not name:
+                      continue
+                  if not pathlib.Path("runbooks", f"{name}.md").exists():
+                      problems.append(f"{name}: runbooks/{name}.md is missing")
+                  for label in ("severity", "team"):
+                      if label not in rule.get("labels", {}):
+                          problems.append(f"{name}: label '{label}' is missing")
+                  for annotation in ("summary", "description", "runbook_url"):
+                      if annotation not in rule.get("annotations", {}):
+                          problems.append(f"{name}: annotation '{annotation}' is missing")
+          print("\n".join(problems) or "all alerts have runbooks, labels and annotations")
+          sys.exit(1 if problems else 0)
+          EOF
+
+      - name: Prod PrometheusRule is in sync with the staging rules
+        run: python3 scripts/sync-prod-rules.py --check
+
+      - name: Dashboards are valid JSON with a uid
+        run: |
+          python3 - <<'EOF'
+          import json, pathlib, sys
+          bad = False
+          for path in sorted(pathlib.Path("platform-manifests/grafana/dashboards").glob("*.json")):
+              try:
+                  dashboard = json.loads(path.read_text())
+                  assert dashboard.get("uid") and dashboard.get("title"), "uid or title missing"
+                  print(f"ok    {path.name}")
+              except Exception as exc:
+                  print(f"::error::{path}: {exc}")
+                  bad = True
+          sys.exit(1 if bad else 0)
+          EOF
