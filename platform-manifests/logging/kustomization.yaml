@@ -43,10 +43,41 @@ helmCharts:
     namespace: logging
     valuesInline:
       config:
+        # The chart's default filter already has Merge_Log On / Keep_Log Off /
+        # K8S-Logging.Parser On; it is repeated here so the behaviour the Loki
+        # labels and dashboards depend on is explicit. The grep filter drops
+        # probe and scrape noise (plain uvicorn access lines and JSON access lines).
+        filters: |
+          [FILTER]
+              Name kubernetes
+              Match kube.*
+              Merge_Log On
+              Keep_Log Off
+              K8S-Logging.Parser On
+              K8S-Logging.Exclude On
+
+          [FILTER]
+              Name grep
+              Match kube.*
+              Exclude log (GET|HEAD) /(health|metrics)
+              Exclude path ^/(health|metrics)
+
+        # Low-cardinality stream labels only: namespace, pod, container, app.
+        # Everything else stays in the JSON log line and is queried with `| json`.
         outputs: |
           [OUTPUT]
               Name loki
-              Match *
+              Match kube.*
               Host loki-gateway.logging.svc.cluster.local
               Port 80
-              Labels job=fluentbit
+              Labels job=fluentbit, namespace=$kubernetes['namespace_name'], pod=$kubernetes['pod_name'], container=$kubernetes['container_name'], app=$kubernetes['labels']['app']
+              Auto_Kubernetes_Labels Off
+              Remove_Keys kubernetes,stream
+              Line_Format json
+
+          [OUTPUT]
+              Name loki
+              Match host.*
+              Host loki-gateway.logging.svc.cluster.local
+              Port 80
+              Labels job=fluentbit-host
