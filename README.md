@@ -57,7 +57,7 @@ Verified **2026-10-06** on the `nexora-staging` EKS cluster in `us-east-1`:
 | Service mesh | Istio `1.22.0`; namespace-level `PeerAuthentication` is `PERMISSIVE` |
 | Workloads | `nexora-workloads` points to the staging Kustomize overlay in `app-manifests` |
 | Streaming | Strimzi `1.2.0`; Kafka `4.3.1`, three KRaft broker/controller replicas |
-| Monitoring | Prometheus server and Alertmanager use persistent `ebs-gp3` claims (8 GiB and 2 GiB); the fraud CPU alert is a native Prometheus rule |
+| Monitoring | Prometheus server and Alertmanager use persistent `ebs-gp3` claims (8 GiB and 2 GiB); see [Observability](#5-observability-prometheus-grafana-logging-tracing-runbooks) for rules, dashboards, logs and traces added after this verification |
 | Secrets | External Secrets Operator reads AWS Secrets Manager through IRSA |
 
 At verification, every Argo CD application was **Synced/Healthy**. Production
@@ -79,22 +79,35 @@ platform-config/
 │   ├── nexora-workloads.yml            <-- Workload pointer (Sync Wave 5)
 │   ├── prometheus.yaml                 <-- Persistent Prometheus monitoring stack
 │   ├── storage.yaml                    <-- EBS StorageClass
-│   └── strimzi.yaml                    <-- Strimzi operator and CRDs (Sync Wave 1)
+│   ├── strimzi.yaml                    <-- Strimzi operator and CRDs (Sync Wave 1)
+│   ├── logging.yaml                    <-- Loki + Fluent Bit
+│   └── tracing.yaml                    <-- Tempo + OpenTelemetry Collector
+│
+├── apps-prod/                          <-- ArgoCD Applications for the PROD cluster (kube-prometheus-stack, grafana-operator, ...)
 │
 ├── platform-manifests/                 <-- The Kustomize Blueprints & Configurations
 │   ├── external-secrets/               <-- SecretStore & ESO CRD definitions
-│   ├── grafana/                        <-- Kustomize overlay & ESO password binding
+│   ├── grafana/                        <-- Grafana chart, datasources, ESO password binding, dashboards/ (JSON)
 │   ├── istio/                          <-- PeerAuthentication mTLS rules
 │   ├── kafka/                          <-- Strimzi Kafka, topics, users, and access policy
-│   ├── network-policies/               <-- Unified policies.yaml (Default-deny + microservice rules)
+│   ├── logging/                        <-- Loki and Fluent Bit (Loki labels: namespace, pod, container, app)
+│   ├── tracing/                        <-- Tempo and the OpenTelemetry Collector
+│   ├── network-policies/               <-- Default-deny, per-service rules, Kafka, Prometheus scrape, OTLP egress
 │   ├── nexora-workloads/               <-- Application-manifest pointer
 │   ├── prometheus/                     <-- Helm values, alerts, and SMTP ExternalSecret
 │   ├── storage/                        <-- EBS StorageClass
 │   ├── strimzi/                        <-- Strimzi operator chart
 │   └── backstage/                      <-- Spotify Backstage IDP Helm chart & RFC 6902 JSON patch
 │
+├── platform-manifests-prod/            <-- PROD-only manifests: kube-prometheus-stack, ServiceMonitor, PrometheusRule, Grafana CRs
+│
+├── runbooks/                           <-- One runbook per alert
+│
+├── .github/workflows/validate.yaml     <-- PR checks: kustomize build, promtool, amtool, runbook and dashboard checks
+│
 └── scripts/
-    └── open-dashboards.sh              <-- 1-Click operator dashboard launcher
+    ├── open-dashboards.sh              <-- 1-Click operator dashboard launcher
+    └── sync-prod-rules.py              <-- Generates the prod PrometheusRule from the staging rules
 ```
 
 ---
@@ -126,7 +139,7 @@ To prevent workloads from attempting to mount secrets or attach to namespaces be
 ## Platform Component Specifications
 
 ### 1. Zero-Trust Network Policies (`/network-policies`)
-Consolidated into a single file (`policies.yaml`) to eliminate Kustomize file-accumulation errors.
+Split into one file per concern (`default-deny.yaml`, `microservice-rules.yaml`, `policies.yaml` for the gateway, `kafka-client-rules.yaml`, `prometheus-scrape.yaml`, `tracing-egress.yaml`). NetworkPolicies are additive, so each file only adds access.
 * **Namespace Ownership:** Centrally creates `Namespace/nexora` with the `istio-injection: enabled` label baked in.
 * **Default-Deny:** Drops all ingress and egress network traffic across the namespace by default (only DNS port 53 is whitelisted).
 * **Explicit Microsegmentation:**
@@ -146,10 +159,61 @@ Consolidated into a single file (`policies.yaml`) to eliminate Kustomize file-ac
 * Each combined broker/controller requests `100m` CPU and `1Gi` memory, and uses a 20 GiB `ebs-gp3` claim. Kafka uses internal TLS with SCRAM-SHA-512, three-way topic replication, and a minimum in-sync replica count of two.
 * Kafka PVs currently use the `Retain` reclaim policy. Preserve and explicitly rebind retained volumes when recovering the cluster; do not assume a fresh cluster automatically adopts them.
 
-### 5. Observability Stack (`/prometheus` & `/grafana`)
-* **Prometheus:** Uses an 8 GiB persistent `ebs-gp3` claim, with 256 MiB requested and 2 GiB limited memory. Fraud-service CPU alert rules are rendered into Prometheus' native `alerting_rules.yml`.
-* **Alertmanager:** Uses a 2 GiB persistent `ebs-gp3` claim. SMTP credentials are mounted from an ExternalSecret-backed Kubernetes Secret; no password is stored in Git.
-* **Grafana:** Pre-configured with automated Prometheus datasource bindings. Secret credentials (`admin-password`) are pulled dynamically from AWS Secrets Manager via ESO, using `disableNameSuffixHash: true` to prevent Kustomize name mismatches.
+### 5. Observability (`/prometheus`, `/grafana`, `/logging`, `/tracing`, `runbooks/`)
+
+**Scrape configuration**
+* Staging uses the plain `prometheus` chart. Pods are discovered through `prometheus.io/*` annotations (job `kubernetes-pods`); the pod label `app` becomes the `app` label on every series. With Istio sidecars the annotations are rewritten so Prometheus scrapes the merged endpoint on port 15020.
+* `scrape_interval` and `evaluation_interval` are 30 seconds. Every rate window in rules and dashboards is at least `[2m]`.
+* NetworkPolicy `allow-prometheus-scrape` lets the `monitoring` namespace reach all `nexora` pods on TCP 8000 and 15020.
+* Prometheus keeps an 8 GiB persistent `ebs-gp3` volume (256 MiB requested, 2 GiB memory limit); Alertmanager keeps 2 GiB.
+
+**Alert rules** (group `nexora-slo-and-health`, plus `HighFraudServiceCPU`)
+
+| Alert | Fires when | Severity |
+|---|---|---|
+| `HighHTTP5xxRate` | a service returns > 10% 5xx for 5 min (health and metrics endpoints excluded) | critical |
+| `TransferErrorBudgetFastBurn` | `/transfer` 5xx ratio > 1.44% over both 1 h and 5 min (99.9% SLO, burn rate 14.4) | critical |
+| `NodeNotReady` | a node is not Ready for 5 min | critical |
+| `HighHTTPLatencyP99` | a service's p99 latency > 1 s for 10 min | warning |
+| `PodCrashLooping` | a container keeps restarting for 15 min | warning |
+| `ContainerOOMKilled` | a container's last termination was an OOM kill | warning |
+| `ContainerMemoryNearLimit` | an app container uses > 85% of its memory limit for 10 min | warning |
+| `HPAAtMaxReplicas` | an HPA sits at max replicas for 15 min | warning |
+| `TargetDown` | a scrape target is down for 5 min | warning |
+| `PersistentVolumeFillingUp` | a PVC has < 15% free for 10 min | warning |
+| `HighFraudServiceCPU` | a fraud-service pod uses > 80% of its CPU limit for 5 min | warning |
+| `Watchdog` | always (proves the pipeline works) | none |
+
+Recording rules `sli:transfer_errors:ratio_rate5m` and `sli:transfer_errors:ratio_rate1h` hold the transfer error ratio.
+
+**Routing (Alertmanager)**
+* Grouped by `alertname`, `namespace`, `app`; `group_wait` 30s, `group_interval` 5m, `repeat_interval` 4h.
+* `severity="critical"` goes to email and repeats every 30 minutes. Warnings go to email on the 4-hour default.
+* `Watchdog` goes to a `null` receiver.
+* `NodeNotReady` mutes warning and critical alerts that carry the same `node` label.
+* SMTP credentials are mounted from an ExternalSecret-backed Secret; no password is stored in Git.
+
+**Runbooks:** one file per alert in [`runbooks/`](runbooks/) (meaning, impact, first three checks, mitigation, escalation). Each alert links to its runbook through the `runbook_url` annotation. CI fails if an alert has no runbook.
+
+**Dashboards as code:** JSON files in `platform-manifests/grafana/dashboards/`, loaded by the Grafana sidecar from ConfigMaps labelled `grafana_dashboard=1` (folder "Nexora").
+* *Nexora / Workloads (RED)*: request rate, 5xx %, latency percentiles per service, transfer outcomes, top handlers.
+* *Nexora / CPU and memory*: usage against limits, throttling, restarts, OOM kills, fraud HPA, node usage.
+* *Nexora / Logs*: log volume, error rate, HTTP status, and log panels including a `correlation_id` search.
+
+Grafana datasources (fixed uids): `prometheus`, `alertmanager`, `loki`, `tempo`. The admin password comes from AWS Secrets Manager via ESO.
+
+**Logs:** Fluent Bit sends container logs to Loki with four stream labels only: `namespace`, `pod`, `container`, `app`. Health-probe and metrics-scrape lines are dropped. The services write JSON, so everything else (`correlation_id`, `status`, `duration_ms`, `trace_id`) is queried with `| json`.
+
+**Traces:** the services export OTLP to an OpenTelemetry Collector (`memory_limiter`, `k8sattributes`, tail sampling: every error, every trace slower than 1 s, 10% of the rest), which forwards to Tempo. Grafana links traces to logs through `trace_id`. NetworkPolicy `allow-otlp-egress` opens ports 4317/4318 to the collector.
+
+**Production variant (`apps-prod/`, `platform-manifests-prod/`):** prod uses `kube-prometheus-stack` and `grafana-operator`, so its configuration is custom resources: a `ServiceMonitor` for the five services, a `PrometheusRule` generated from the staging rules by `scripts/sync-prod-rules.py` (CI checks they are in sync), and `Grafana`, `GrafanaDatasource` and `GrafanaDashboard` resources that reuse the same dashboard JSON. The prod set has been rendered and linted but not deployed.
+
+**Remaining gaps**
+* `Watchdog` has no external receiver, so nothing notices if the whole alerting pipeline dies.
+* Canary weights are approximated by pod count (no Istio traffic routing for the rollout); the canary analysis measures the whole service, not the canary pods alone.
+* Tracing is new and unverified on a live cluster. Prometheus exemplars are configured in Grafana but the services do not emit them yet.
+* `HighHTTPLatencyP99` includes health probes, because the high-resolution histogram has no handler label.
+* The chart values `pushgateway.enabled` and `nodeExporter.enabled` in the staging Prometheus kustomization are not keys this chart version reads (the real keys are `prometheus-pushgateway` and `prometheus-node-exporter`), so the Pushgateway is still deployed.
 
 ### 6. Developer Experience: Backstage IDP (`/backstage`)
 * Deployed via the official Backstage Helm chart.
@@ -195,7 +259,7 @@ cd platform-config
 
 ### 3. Prometheus Server OOMKilled at 57 Seconds
 * **Symptom:** `prometheus-server` repeatedly entered `CrashLoopBackOff` (Exit Code 137) roughly one minute after boot.
-* **Diagnosis:** Prometheus started with 256Mi memory. At 30 seconds, it began actively scraping metrics from 8 microservices, AWS CNI, and the EKS control plane. The metric buffer exceeded 256Mi, triggering a kernel OOMKill.
+* **Diagnosis:** Prometheus started with 256Mi memory. At 30 seconds, it began actively scraping metrics from the six services (plus sidecars), AWS CNI, and the EKS control plane. The metric buffer exceeded 256Mi, triggering a kernel OOMKill.
 * **Fix:** Increased the memory limit to 2 GiB in `platform-manifests/prometheus/kustomization.yaml`, providing sufficient headroom for TSDB block indexing.
 
 ### 4. Database Init Job Connection Refused (Error 111)
