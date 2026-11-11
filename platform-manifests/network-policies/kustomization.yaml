@@ -9,3 +9,4 @@ resources:
   - microservice-rules.yaml
   - policies.yaml
   - kafka-client-rules.yaml
+  - prometheus-scrape.yaml

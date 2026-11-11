@@ -1,0 +1,24 @@
+# Lets Prometheus (monitoring namespace) scrape every pod in nexora.
+# NetworkPolicies are additive, so this does not widen any other access.
+#   8000  - the services' own /metrics endpoint (pods without a sidecar)
+#   15020 - Istio merged-metrics port: with sidecar injection Istio rewrites the
+#           prometheus.io/* annotations so Prometheus scrapes :15020/stats/prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: nexora
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 15020
