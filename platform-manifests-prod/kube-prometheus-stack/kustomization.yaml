@@ -1,0 +1,118 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# PROD monitoring: kube-prometheus-stack (Prometheus Operator).
+# Scrape targets and rules are custom resources (ServiceMonitor, PrometheusRule)
+# declared in ../monitoring-config. Staging keeps the plain Prometheus chart
+# with annotation-based scraping (platform-manifests/prometheus).
+#
+# No "namespace:" transformer on purpose: the chart also creates Services in
+# kube-system (kubelet, CoreDNS) and those must stay there.
+resources:
+  - external-secret.yaml
+
+helmCharts:
+  - name: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+    version: 93.2.0
+    releaseName: kps
+    namespace: monitoring
+    includeCRDs: true
+    valuesInline:
+      # Short, predictable names: kps-prometheus, kps-alertmanager, kps-operator
+      fullnameOverride: kps
+
+      # Only the Nexora rule set (PrometheusRule nexora-rules) is loaded, so prod
+      # alerts match staging. The chart's bundled rules can be switched on later.
+      defaultRules:
+        create: false
+
+      # Grafana is managed by grafana-operator (Grafana / GrafanaDatasource /
+      # GrafanaDashboard custom resources), not by this chart.
+      grafana:
+        enabled: false
+
+      # EKS runs these control-plane components; they are not scrapeable.
+      kubeControllerManager:
+        enabled: false
+      kubeScheduler:
+        enabled: false
+      kubeEtcd:
+        enabled: false
+      kubeProxy:
+        enabled: false
+
+      prometheus:
+        prometheusSpec:
+          scrapeInterval: 30s
+          evaluationInterval: 30s
+          retention: 15d
+          # Pick up every ServiceMonitor / PodMonitor / PrometheusRule in the
+          # cluster, not only the ones carrying this Helm release's label.
+          serviceMonitorSelectorNilUsesHelmValues: false
+          podMonitorSelectorNilUsesHelmValues: false
+          ruleSelectorNilUsesHelmValues: false
+          probeSelectorNilUsesHelmValues: false
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: ebs-gp3
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: 20Gi
+
+      alertmanager:
+        alertmanagerSpec:
+          # Mounted at /etc/alertmanager/secrets/alertmanager-smtp-secret/
+          secrets:
+            - alertmanager-smtp-secret
+          storage:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: ebs-gp3
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: 2Gi
+        # Same routing as staging (platform-manifests/prometheus/kustomization.yaml)
+        config:
+          global:
+            smtp_smarthost: 'smtp.gmail.com:587'
+            smtp_from: 'ahmedkhater2611@gmail.com'
+            smtp_require_tls: true
+          route:
+            receiver: 'email-alerts'
+            group_by: ['alertname', 'namespace', 'app']
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 4h
+            routes:
+              - receiver: 'null'
+                matchers:
+                  - alertname="Watchdog"
+              - receiver: 'email-alerts'
+                matchers:
+                  - severity="critical"
+                repeat_interval: 30m
+          inhibit_rules:
+            - source_matchers:
+                - alertname="NodeNotReady"
+              target_matchers:
+                - severity=~"warning|critical"
+                - alertname!="NodeNotReady"
+              equal: ['node']
+          receivers:
+            - name: 'null'
+            - name: 'email-alerts'
+              email_configs:
+                - to: 'ahmedkhater2611@gmail.com'
+                  send_resolved: true
+                  auth_username: 'ahmedkhater2611@gmail.com'
+                  auth_password_file: /etc/alertmanager/secrets/alertmanager-smtp-secret/smtp-password

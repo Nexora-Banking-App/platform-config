@@ -1,0 +1,21 @@
+# Same manifests as staging (platform-manifests/); only the Application lives here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tracing
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Nexora-Banking-App/platform-config.git'
+    targetRevision: HEAD
+    path: platform-manifests/tracing
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

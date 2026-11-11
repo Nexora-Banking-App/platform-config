@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# PROD monitoring configuration, all as custom resources:
+#   ServiceMonitor     - what Prometheus scrapes
+#   PrometheusRule     - alert and recording rules (generated from the staging rules)
+#   Grafana            - the Grafana instance (grafana-operator)
+#   GrafanaDatasource  - Prometheus, Alertmanager, Loki, Tempo
+#   GrafanaDashboard   - the same dashboard JSON staging uses
+resources:
+  - service-monitor.yaml
+  - prometheus-rules.yaml
+  - grafana.yaml
+  - grafana-datasources.yaml
+  - grafana-dashboards.yaml
+  - external-secret.yaml
+  # Dashboard JSON as ConfigMaps, shared with staging
+  - ../../platform-manifests/grafana/dashboards

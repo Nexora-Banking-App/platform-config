@@ -1,0 +1,164 @@
+# GENERATED FILE - do not edit by hand.
+# Source: platform-manifests/prometheus/kustomization.yaml (serverFiles)
+# Regenerate with: scripts/sync-prod-rules.py
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nexora-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: nexora
+spec:
+  groups:
+  - name: nexora-workloads
+    rules:
+    - alert: HighFraudServiceCPU
+      expr: |
+        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="nexora", container="fraud-service"}[5m]))
+          / sum by (pod) (kube_pod_container_resource_limits{namespace="nexora", container="fraud-service", resource="cpu"})
+          > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: fraud-service pod {{ $labels.pod }} is using more than 80% of its CPU limit
+        description: Pod {{ $labels.pod }} has used {{ $value | humanizePercentage }} of its CPU limit over the last 5 minutes. The HPA should be adding replicas.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/HighFraudServiceCPU.md
+  - name: nexora-slo-and-health
+    rules:
+    - alert: HighHTTP5xxRate
+      expr: |
+        sum by (app) (rate(http_requests_total{namespace="nexora", status="5xx", handler!~"/health.*|/metrics"}[5m]))
+          / sum by (app) (rate(http_requests_total{namespace="nexora", handler!~"/health.*|/metrics"}[5m]))
+          > 0.10
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: '{{ $labels.app }} 5xx error rate is above 10%'
+        description: '{{ $labels.app }} is returning {{ $value | humanizePercentage }} 5xx responses over the last 5 minutes (health and metrics endpoints excluded).'
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/HighHTTP5xxRate.md
+    - alert: HighHTTPLatencyP99
+      expr: |
+        histogram_quantile(0.99,
+          sum by (app, le) (rate(http_request_duration_highr_seconds_bucket{namespace="nexora"}[5m]))
+        ) > 1
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: '{{ $labels.app }} p99 latency is above 1s'
+        description: '{{ $labels.app }} p99 request latency is {{ $value | humanizeDuration }} over the last 5 minutes.'
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/HighHTTPLatencyP99.md
+    - alert: PodCrashLooping
+      expr: increase(kube_pod_container_status_restarts_total{namespace="nexora"}[15m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: Container {{ $labels.container }} in pod {{ $labels.pod }} keeps restarting
+        description: Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} has been restarting for at least 15 minutes.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/PodCrashLooping.md
+    - alert: ContainerOOMKilled
+      expr: kube_pod_container_status_last_terminated_reason{namespace="nexora", reason="OOMKilled"} == 1
+      for: 0m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: Container {{ $labels.container }} in pod {{ $labels.pod }} was OOMKilled
+        description: The last termination of container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} was an OOM kill. It needs a higher memory limit or has a leak.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/ContainerOOMKilled.md
+    - alert: ContainerMemoryNearLimit
+      expr: |
+        sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace="nexora", container!="", container!="POD", container!="istio-proxy"})
+          / sum by (namespace, pod, container) (kube_pod_container_resource_limits{namespace="nexora", resource="memory", container!="istio-proxy"})
+          > 0.85
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: Container {{ $labels.container }} in pod {{ $labels.pod }} is close to its memory limit
+        description: Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/ContainerMemoryNearLimit.md
+    - alert: HPAAtMaxReplicas
+      expr: |
+        kube_horizontalpodautoscaler_status_current_replicas{namespace="nexora"}
+          == on (namespace, horizontalpodautoscaler)
+        kube_horizontalpodautoscaler_spec_max_replicas{namespace="nexora"}
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: HPA {{ $labels.horizontalpodautoscaler }} has been at max replicas for 15 minutes
+        description: HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} is running {{ $value }} replicas, its configured maximum. It cannot scale further.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/HPAAtMaxReplicas.md
+    - alert: NodeNotReady
+      expr: kube_node_status_condition{condition="Ready", status="true"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: Node {{ $labels.node }} is not Ready
+        description: Node {{ $labels.node }} has not reported Ready for 5 minutes. Pods on it may be evicted or unreachable.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/NodeNotReady.md
+    - alert: TargetDown
+      expr: up == 0
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: Prometheus cannot scrape {{ $labels.job }} target {{ $labels.instance }}
+        description: Target {{ $labels.instance }} of job {{ $labels.job }} (namespace {{ $labels.namespace }}, pod {{ $labels.pod }}) has been down for 5 minutes.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/TargetDown.md
+    - alert: PersistentVolumeFillingUp
+      expr: kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 0.15
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: PVC {{ $labels.persistentvolumeclaim }} has less than 15% free space
+        description: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has {{ $value | humanizePercentage }} free space left.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/PersistentVolumeFillingUp.md
+    - alert: TransferErrorBudgetFastBurn
+      expr: |
+        sli:transfer_errors:ratio_rate1h > (14.4 * 0.001)
+          and
+        sli:transfer_errors:ratio_rate5m > (14.4 * 0.001)
+      for: 2m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: Transfers are burning the 99.9% error budget 14.4x too fast
+        description: The /transfer 5xx ratio is {{ $value | humanizePercentage }} over the last hour, and the 5-minute ratio confirms it is still happening.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/TransferErrorBudgetFastBurn.md
+    - alert: Watchdog
+      expr: vector(1)
+      for: 0m
+      labels:
+        severity: none
+        team: platform
+      annotations:
+        summary: Alerting pipeline heartbeat
+        description: This alert always fires. If it stops reaching Alertmanager, the alerting pipeline is broken.
+        runbook_url: https://github.com/Nexora-Banking-App/platform-config/blob/main/runbooks/Watchdog.md
+  - name: nexora-sli
+    rules:
+    - record: sli:transfer_errors:ratio_rate5m
+      expr: |
+        sum(rate(http_requests_total{namespace="nexora", app="transaction-service", handler="/transfer", status="5xx"}[5m]))
+          / sum(rate(http_requests_total{namespace="nexora", app="transaction-service", handler="/transfer"}[5m]))
+    - record: sli:transfer_errors:ratio_rate1h
+      expr: |
+        sum(rate(http_requests_total{namespace="nexora", app="transaction-service", handler="/transfer", status="5xx"}[1h]))
+          / sum(rate(http_requests_total{namespace="nexora", app="transaction-service", handler="/transfer"}[1h]))

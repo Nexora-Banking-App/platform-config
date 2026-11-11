@@ -1,0 +1,46 @@
+# One GrafanaDashboard per dashboard. The JSON itself lives in
+# platform-manifests/grafana/dashboards and reaches the cluster as ConfigMaps.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: nexora-workloads
+  namespace: monitoring
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: nexora
+  folder: Nexora
+  resyncPeriod: 5m
+  configMapRef:
+    name: dashboard-nexora-workloads
+    key: nexora-workloads.json
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: nexora-resources
+  namespace: monitoring
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: nexora
+  folder: Nexora
+  resyncPeriod: 5m
+  configMapRef:
+    name: dashboard-nexora-resources
+    key: nexora-resources.json
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: nexora-logs
+  namespace: monitoring
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: nexora
+  folder: Nexora
+  resyncPeriod: 5m
+  configMapRef:
+    name: dashboard-nexora-logs
+    key: nexora-logs.json

@@ -1,0 +1,30 @@
+# Prod workloads: the prod overlay of app-manifests.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nexora-workloads
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Nexora-Banking-App/platform-config.git'
+    targetRevision: HEAD
+    path: platform-manifests-prod/nexora-workloads
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: nexora
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: fraud-service
+      jsonPointers:
+        - /spec/replicas

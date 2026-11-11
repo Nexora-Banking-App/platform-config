@@ -1,0 +1,43 @@
+# The Grafana instance, managed by grafana-operator.
+# Datasources and dashboards attach to it through the label dashboards=nexora.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    dashboards: nexora
+spec:
+  config:
+    log:
+      mode: console
+    auth:
+      disable_login_form: "false"
+    analytics:
+      check_for_updates: "false"
+      reporting_enabled: "false"
+  deployment:
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+            - name: grafana
+              # Admin credentials come from AWS Secrets Manager via ESO
+              env:
+                - name: GF_SECURITY_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin-credentials
+                      key: admin-user
+                - name: GF_SECURITY_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-admin-credentials
+                      key: admin-password
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi

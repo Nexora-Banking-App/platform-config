@@ -1,0 +1,26 @@
+# Scrapes /metrics on the five FastAPI services through their Services.
+# The Services carry the label nexora.io/metrics=enabled and a port named
+# "http" (see app-manifests/base). podTargetLabels copies the pod's "app" label
+# onto every series, so the alert rules and dashboards written for staging
+# (which select on app="...") work unchanged.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nexora-services
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: nexora
+spec:
+  namespaceSelector:
+    matchNames:
+      - nexora
+  selector:
+    matchLabels:
+      nexora.io/metrics: enabled
+  podTargetLabels:
+    - app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
