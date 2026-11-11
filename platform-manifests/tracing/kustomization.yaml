@@ -1,0 +1,106 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+# Distributed tracing: services -> OTel Collector (OTLP) -> Tempo -> Grafana.
+helmCharts:
+  # 1. Tempo (single binary) - trace storage
+  - name: tempo
+    repo: https://grafana.github.io/helm-charts
+    version: 1.24.4
+    releaseName: tempo
+    namespace: monitoring
+    valuesInline:
+      tempo:
+        retention: 72h
+        reportingEnabled: false
+        resources:
+          requests:
+            cpu: 50m
+            memory: 256Mi
+          limits:
+            memory: 2Gi
+      persistence:
+        enabled: true
+        storageClassName: ebs-gp3
+        size: 10Gi
+
+  # 2. OpenTelemetry Collector - receives OTLP from the services, samples, forwards to Tempo
+  - name: opentelemetry-collector
+    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.178.3
+    releaseName: otel-collector
+    namespace: monitoring
+    valuesInline:
+      fullnameOverride: otel-collector
+      mode: deployment
+      replicaCount: 1
+      image:
+        # contrib build: needed for the k8sattributes and tail_sampling processors
+        repository: otel/opentelemetry-collector-contrib
+      # Adds the k8sattributes processor and the RBAC it needs
+      presets:
+        kubernetesAttributes:
+          enabled: true
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 512Mi
+      ports:
+        jaeger-compact:
+          enabled: false
+        jaeger-thrift:
+          enabled: false
+        jaeger-grpc:
+          enabled: false
+        zipkin:
+          enabled: false
+      # Only the traces pipeline is customised. The chart's default metrics and
+      # logs pipelines stay: they export to the debug exporter and carry no data,
+      # because the services send traces only.
+      config:
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: ${env:MY_POD_IP}:4317
+              http:
+                endpoint: ${env:MY_POD_IP}:4318
+        processors:
+          memory_limiter:
+            check_interval: 5s
+            limit_percentage: 80
+            spike_limit_percentage: 25
+          # Keep every trace with an error, every trace slower than 1s,
+          # and 10% of everything else.
+          tail_sampling:
+            decision_wait: 10s
+            num_traces: 20000
+            policies:
+              - name: errors
+                type: status_code
+                status_code:
+                  status_codes: [ERROR]
+              - name: slow
+                type: latency
+                latency:
+                  threshold_ms: 1000
+              - name: baseline
+                type: probabilistic
+                probabilistic:
+                  sampling_percentage: 10
+          batch: {}
+        exporters:
+          otlp/tempo:
+            endpoint: tempo.monitoring.svc.cluster.local:4317
+            tls:
+              insecure: true
+        service:
+          pipelines:
+            traces:
+              receivers: [otlp]
+              processors: [memory_limiter, k8sattributes, tail_sampling, batch]
+              exporters: [otlp/tempo]

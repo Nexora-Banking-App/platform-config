@@ -1,0 +1,3 @@
+# Helm charts that "kustomize build --enable-helm" downloads next to a kustomization
+platform-manifests/**/charts/
+platform-manifests-prod/**/charts/
