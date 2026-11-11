@@ -5,6 +5,8 @@ namespace: monitoring
 
 resources:
   - external-secret.yaml
+  # Dashboard ConfigMaps (label grafana_dashboard=1), one per JSON file
+  - dashboards
 
 # Disable random hashing so the secret is exactly named "grafana-admin-credentials"
 generatorOptions:
@@ -28,12 +30,38 @@ helmCharts:
         userKey: admin-user
         passwordKey: admin-password
       
+      # Loads every ConfigMap labelled grafana_dashboard=1, in any namespace.
+      # The grafana_folder annotation on the ConfigMap picks the Grafana folder.
+      sidecar:
+        dashboards:
+          enabled: true
+          label: grafana_dashboard
+          labelValue: "1"
+          searchNamespace: ALL
+          folderAnnotation: grafana_folder
+          provider:
+            foldersFromFilesStructure: true
+
+      # uids are fixed because the dashboards reference datasources by uid.
       datasources:
         datasources.yaml:
           apiVersion: 1
           datasources:
             - name: Prometheus
               type: prometheus
+              uid: prometheus
               url: http://prometheus-server.monitoring.svc.cluster.local
               access: proxy
               isDefault: true
+            - name: Loki
+              type: loki
+              uid: loki
+              url: http://loki-gateway.logging.svc.cluster.local
+              access: proxy
+            - name: Alertmanager
+              type: alertmanager
+              uid: alertmanager
+              url: http://prometheus-alertmanager.monitoring.svc.cluster.local:9093
+              access: proxy
+              jsonData:
+                implementation: prometheus

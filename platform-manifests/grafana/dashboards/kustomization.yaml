@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Dashboards as code. One ConfigMap per dashboard JSON file in this folder.
+# Staging: the Grafana sidecar loads every ConfigMap labelled grafana_dashboard=1.
+# Prod: GrafanaDashboard custom resources reference the same ConfigMaps.
+# To add a dashboard: drop the JSON here and add one entry below.
+namespace: monitoring
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: Nexora
+
+configMapGenerator:
+  - name: dashboard-nexora-workloads
+    files:
+      - nexora-workloads.json
+  - name: dashboard-nexora-resources
+    files:
+      - nexora-resources.json
+  - name: dashboard-nexora-logs
+    files:
+      - nexora-logs.json
