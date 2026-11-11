@@ -11,3 +11,4 @@ resources:
   - kafka-client-rules.yaml
   - prometheus-scrape.yaml
   - tracing-egress.yaml
+  - platform-egress.yaml

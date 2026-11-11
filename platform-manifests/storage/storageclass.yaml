@@ -6,6 +6,9 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: ebs.csi.aws.com
 volumeBindingMode: WaitForFirstConsumer
+# Lets a PVC be grown in place (edit spec.resources.requests.storage) when the
+# PersistentVolumeFillingUp alert fires. Volumes can grow, never shrink.
+allowVolumeExpansion: true
 parameters:
   type: gp3
-  encrypted: "true" # Best Practice: Encrypt monitoring data at rest!
+  encrypted: "true" # Encrypt every volume at rest

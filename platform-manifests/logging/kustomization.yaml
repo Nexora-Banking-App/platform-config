@@ -20,6 +20,13 @@ helmCharts:
         storage:
           type: filesystem
 
+        # Keep 7 days of logs. Without retention the single volume fills up.
+        limits_config:
+          retention_period: 168h
+        compactor:
+          retention_enabled: true
+          shared_store: filesystem
+
       singleBinary:
         replicas: 1
 

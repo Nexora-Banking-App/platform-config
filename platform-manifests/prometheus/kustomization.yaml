@@ -193,7 +193,7 @@ helmCharts:
         global:
           scrape_interval: 30s
           evaluation_interval: 30s
-        # DURABLE STORAGE RETAINED!
+        # Metrics survive pod restarts on an encrypted gp3 volume
         persistentVolume:
           enabled: true
           storageClass: "ebs-gp3"
@@ -259,7 +259,12 @@ helmCharts:
                   auth_username: 'ahmedkhater2611@gmail.com'
                   auth_password_file: /etc/alertmanager/secrets/smtp-password
 
-      pushgateway:
+      # Sub-chart switches. The keys are the sub-chart names; the older
+      # "pushgateway" / "nodeExporter" keys are ignored by this chart version,
+      # which is why a Pushgateway used to be deployed although it was "disabled".
+      prometheus-pushgateway:
         enabled: false
-      nodeExporter:
-        enabled: true # KEPT ENABLED!
+      prometheus-node-exporter:
+        enabled: true
+      kube-state-metrics:
+        enabled: true

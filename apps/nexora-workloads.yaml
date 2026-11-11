@@ -4,7 +4,7 @@ metadata:
   name: nexora-workloads
   namespace: argocd
   annotations:
-    # CRITICAL FIX: Ensures this app waits for ESO, CRDs, and Istio (Wave 0) to be 100% Healthy first!
+    # Wave 5: after External Secrets, the CRDs, Istio policy and Kafka are healthy
     argocd.argoproj.io/sync-wave: "5"
 spec:
   project: default

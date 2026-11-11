@@ -8,4 +8,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   mtls:
-    mode: PERMISSIVE # <-- Allows public ingress while keeping internal mTLS!
+    # PERMISSIVE: sidecars use mTLS with each other and still accept plain HTTP
+    # (Prometheus scrapes, the load balancer). STRICT is the hardening target;
+    # see "Known Gaps" in the README. The resource name is historical.
+    mode: PERMISSIVE

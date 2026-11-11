@@ -1,0 +1,45 @@
+# Rules every sidecar-injected pod needs, plus the one-off db-init job.
+# NetworkPolicies are additive: these only add access.
+#
+# NOTE ON ENFORCEMENT: Kubernetes only enforces NetworkPolicies when the CNI
+# does. On EKS that means enabling the VPC CNI network policy agent
+# (infra-modules/eks: enable_network_policy = true). Until then every policy in
+# this folder documents intent but blocks nothing.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istiod-egress
+  namespace: nexora
+spec:
+  # Every sidecar fetches its configuration and certificates from istiod
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-init-egress
+  namespace: nexora
+spec:
+  # The schema job (app-manifests/base/db-init-job.yaml) only talks to MySQL
+  podSelector:
+    matchLabels:
+      app: db-init
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - protocol: TCP
+          port: 3306

@@ -18,7 +18,7 @@ When it fills: Prometheus stops ingesting, Alertmanager loses silences, Kafka br
 
 ## Mitigation
 
-The `ebs-gp3` StorageClass does not set `allowVolumeExpansion`, so the PVC cannot simply be resized. For Prometheus, lower `server.retention` in the chart values. For Kafka, lower `retention.ms` on the topic. Growing a volume needs a StorageClass change first.
+First reduce what is stored: for Prometheus lower `server.retention` in the chart values, for Loki lower `retention_period`, for Kafka lower `retention.ms` on the topic. If the data is needed, grow the volume: the `ebs-gp3` StorageClass allows expansion, so raise the size where the PVC is declared in Git (chart values or the Kafka node pool) and let ArgoCD apply it. Volumes can grow but never shrink.
 
 ## Escalation
 

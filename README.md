@@ -70,13 +70,13 @@ manifests exist in the repositories, but this status describes staging only.
 ```text
 platform-config/
 ├── apps/                               <-- ArgoCD Application Manifests (Root App-of-Apps Targets)
-│   ├── external-secrets.yml            <-- ESO Helm chart & SecretStore
-│   ├── gateway-api.yml                 <-- Kubernetes Gateway API CRDs
+│   ├── external-secrets.yaml            <-- ESO Helm chart & SecretStore
+│   ├── gateway-api.yaml                 <-- Kubernetes Gateway API CRDs
 │   ├── grafana.yaml                    <-- Grafana Helm deployment & datasources
 │   ├── kafka.yaml                      <-- Kafka cluster (Sync Wave 3)
 │   ├── istio.yaml                      <-- Istio mTLS policies
 │   ├── network-policies.yaml           <-- Zero-Trust microsegmentation
-│   ├── nexora-workloads.yml            <-- Workload pointer (Sync Wave 5)
+│   ├── nexora-workloads.yaml            <-- Workload pointer (Sync Wave 5)
 │   ├── prometheus.yaml                 <-- Persistent Prometheus monitoring stack
 │   ├── storage.yaml                    <-- EBS StorageClass
 │   ├── strimzi.yaml                    <-- Strimzi operator and CRDs (Sync Wave 1)
